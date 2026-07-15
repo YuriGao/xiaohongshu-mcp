@@ -282,7 +282,6 @@ Favorite a note or unfavorite it, with smart detection of current status to avoi
 **Risk Explanation**
 
 1. This project is open-sourced based on another project of mine. The original project has been running stably for over a year without any account bans, only occasional cookie expiration requiring re-login.
-2. I used Claude Code CLI integration and verified stable automated operation for several weeks before open-sourcing.
 
 This project is for learning purposes only. All illegal activities are prohibited.
 
@@ -523,32 +522,7 @@ curl -X POST http://localhost:18060/mcp \
   -d '{"jsonrpc":"2.0","method":"initialize","params":{},"id":1}'
 ```
 
-#### Claude Code CLI Integration
-
-```bash
-# Add HTTP MCP server
-claude mcp add --transport http xiaohongshu-mcp http://localhost:18060/mcp
-
-# Check if MCP was added successfully (ensure MCP is already started before running this command)
-claude mcp list
-```
-
 ### 2.2. Supported Clients
-
-<details>
-<summary><b>Claude Code CLI</b></summary>
-
-Official command line tool, already shown in the quick start section above:
-
-```bash
-# Add HTTP MCP server
-claude mcp add --transport http xiaohongshu-mcp http://localhost:18060/mcp
-
-# Check if MCP was added successfully (ensure MCP is already started before running this command)
-claude mcp list
-```
-
-</details>
 
 <details>
 <summary><b>Cursor</b></summary>
@@ -788,7 +762,7 @@ After successful connection, you can use the following MCP tools:
 
 ### 2.4. Usage Examples
 
-Using Claude Code to publish content to RedNote:
+Using an MCP client to publish content to RedNote:
 
 **Example 1: Using HTTP Image Links**
 
@@ -820,8 +794,6 @@ using this local video file:
 
 Use xiaohongshu-mcp's video publishing feature.
 ```
-
-![claude-cli publishing](./assets/claude_push.gif)
 
 **Publishing Result:**
 
@@ -875,8 +847,7 @@ Use xiaohongshu-mcp's video publishing feature.
 
 1. **[n8n Complete Integration Tutorial](./examples/n8n/README.md)** - Workflow automation platform integration
 2. **[Cherry Studio Complete Configuration Tutorial](./examples/cherrystudio/README.md)** - Perfect AI client integration
-3. **[Claude Code + Kimi K2 Integration Tutorial](./examples/claude-code/claude-code-kimi-k2.md)** - If Claude Code's barrier is too high, then integrate with Kimi domestic LLM!
-4. **[AnythingLLM Complete Guide](./examples/anythingLLM/readme.md)** - AnythingLLM is an all-in-one multimodal AI client that supports workflow definition, multiple LLMs, and plugin extensions.
+3. **[AnythingLLM Complete Guide](./examples/anythingLLM/readme.md)** - AnythingLLM is an all-in-one multimodal AI client that supports workflow definition, multiple LLMs, and plugin extensions.
 
 > 🎯 **Tip**: Click the links above to view detailed step-by-step tutorials for quick setup of various integration solutions!
 >

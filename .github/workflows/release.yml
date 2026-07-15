@@ -6,12 +6,10 @@ on:
     paths-ignore:
       - 'README.md'
       - 'README_EN.md'
-      - 'CLAUDE.md'
       - '.all-contributorsrc'
       - '.gitignore'
       - '.dockerignore'
       - 'Dockerfile'
-      - '.claude/**'
       - '.cursor/**'
       - '.github/**'
       - '.vscode/**'

@@ -299,8 +299,7 @@ https://github.com/user-attachments/assets/cc385b6c-422c-489b-a5fc-63e92c695b80
 **风险说明**
 
 1. 该项目是在自己的另外一个项目的基础上开源出来的，原来的项目稳定运行一年多，没有出现过封号的情况，只有出现过 Cookies 过期需要重新登录。
-2. 我是使用 Claude Code 接入，稳定自动化运营数周后，验证没有问题后开源。
-3. 如果账号没有实名认证，特别是新号，一般会触发 **实名认证** 的消息提醒（参见下图）。⚠️ 这个不是封号，不用 MCP 也会要求实名认证。实名认证后，账号就正常了。建议使用该项目前就先实名。
+2. 如果账号没有实名认证，特别是新号，一般会触发 **实名认证** 的消息提醒（参见下图）。⚠️ 这个不是封号，不用 MCP 也会要求实名认证。实名认证后，账号就正常了。建议使用该项目前就先实名。
    <img width="508" height="306" alt="image" src="https://github.com/user-attachments/assets/34383e1b-f666-409f-9870-002655507dc1" />
 
 该项目是基于学习的目的，禁止一切违法行为。
@@ -554,32 +553,7 @@ curl -X POST http://localhost:18060/mcp \
   -d '{"jsonrpc":"2.0","method":"initialize","params":{},"id":1}'
 ```
 
-#### Claude Code CLI 接入
-
-```bash
-# 添加 HTTP MCP 服务器
-claude mcp add --transport http xiaohongshu-mcp http://localhost:18060/mcp
-
-# 检查 MCP 是否添加成功（确保 MCP 已经启动的前提下，运行下面命令）
-claude mcp list
-```
-
 ### 2.2. 支持的客户端
-
-<details>
-<summary><b>Claude Code CLI</b></summary>
-
-官方命令行工具，已在上面快速开始部分展示：
-
-```bash
-# 添加 HTTP MCP 服务器
-claude mcp add --transport http xiaohongshu-mcp http://localhost:18060/mcp
-
-# 检查 MCP 是否添加成功（确保 MCP 已经启动的前提下，运行下面命令）
-claude mcp list
-```
-
-</details>
 
 <details>
 <summary><b>Open Code CLI</b></summary>
@@ -887,7 +861,7 @@ npx mcporter list xiaohongshu-mcp
 
 ### 2.4. 使用示例
 
-使用 Claude Code 发布内容到小红书：
+使用 MCP 客户端发布内容到小红书：
 
 **示例 1：使用 HTTP 图片链接**
 
@@ -920,8 +894,6 @@ npx mcporter list xiaohongshu-mcp
 使用 xiaohongshu-mcp 的视频发布功能。
 ```
 
-![claude-cli 进行发布](./assets/claude_push.gif)
-
 **发布结果：**
 
 <img src="./assets/publish_result.jpeg" alt="xiaohongshu-mcp 发布结果" width="300">
@@ -937,7 +909,7 @@ npx mcporter list xiaohongshu-mcp
 - 若遇到连接失败、工具调用异常等问题，请先排查 MCPorter 自身的配置，而非提交 Issue
 - 在提问社区或群组前，请先确认问题是否能在**不使用 OpenClaw** 的情况下复现
 
-如果你没有强烈的 OpenClaw 使用需求，强烈建议改用 [Claude Code CLI](#claude-code-cli)、[Cursor](#cursor) 或 [Cline](#cline) 等原生支持 HTTP MCP 的客户端，体验会更稳定。
+如果你没有强烈的 OpenClaw 使用需求，强烈建议改用 [Cursor](#cursor) 或 [Cline](#cline) 等原生支持 HTTP MCP 的客户端，体验会更稳定。
 
 ---
 
@@ -985,8 +957,7 @@ npx mcporter list xiaohongshu-mcp
 
 1. **[n8n 完整集成教程](./examples/n8n/README.md)** - 工作流自动化平台集成
 2. **[Cherry Studio 完整配置教程](./examples/cherrystudio/README.md)** - AI 客户端完美接入
-3. **[Claude Code + Kimi K2 接入教程](./examples/claude-code/claude-code-kimi-k2.md)** - Claude Code 门槛太高，那么就接入 Kimi 国产大模型吧～
-4. **[AnythingLLM 完整指南](./examples/anythingLLM/readme.md)** - AnythingLLM 是一款 all-in-one 多模态 AI 客户端，支持 workflow 定义，支持多种大模型和插件扩展。
+3. **[AnythingLLM 完整指南](./examples/anythingLLM/readme.md)** - AnythingLLM 是一款 all-in-one 多模态 AI 客户端，支持 workflow 定义，支持多种大模型和插件扩展。
 
 > 🎯 **提示**: 点击上方链接查看详细的图文教程，快速上手各种集成方案！
 >

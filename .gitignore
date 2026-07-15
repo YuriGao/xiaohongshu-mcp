@@ -32,7 +32,6 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
-.claude/
 
 # Build artifacts
 /build/xiaohongshu-mcp

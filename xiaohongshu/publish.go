@@ -33,7 +33,10 @@ type PublishAction struct {
 }
 
 const (
-	urlOfPublic = `https://creator.xiaohongshu.com/publish/publish?source=official`
+	urlOfPublic                = `https://creator.xiaohongshu.com/publish/publish?source=official`
+	originalDeclarationWait    = 15 * time.Second
+	originalDialogButtonWait   = 5 * time.Second
+	originalDialogPollInterval = 100 * time.Millisecond
 )
 
 func NewPublishImageAction(page *rod.Page) (*PublishAction, error) {
@@ -329,10 +332,9 @@ func submitPublish(page *rod.Page, title, content string, tags []string, schedul
 	// 处理原创声明
 	if isOriginal {
 		if err := setOriginal(page); err != nil {
-			slog.Warn("设置原创声明失败，继续发布", "error", err)
-		} else {
-			slog.Info("已声明原创")
+			return errors.Wrap(err, "设置原创声明失败")
 		}
+		slog.Info("已声明原创")
 	}
 
 	// 绑定商品
@@ -845,12 +847,14 @@ func setDateTime(page *rod.Page, t time.Time) error {
 
 // setOriginal 设置原创声明
 func setOriginal(page *rod.Page) error {
+	pp := page.Timeout(originalDeclarationWait)
+
 	// 根据小红书创作者页面的实际结构：
 	// div.custom-switch-card 包含 span.has-tips 文本为"原创声明"
 	// 开关是 div.d-switch 组件
 
 	// 查找包含"原创声明"文本的 custom-switch-card
-	switchCards, err := page.Elements("div.custom-switch-card")
+	switchCards, err := pp.Elements("div.custom-switch-card")
 	if err != nil {
 		return errors.Wrap(err, "查找原创声明卡片失败")
 	}
@@ -887,14 +891,14 @@ func setOriginal(page *rod.Page) error {
 		}
 
 		// 点击开关
-		if err := humanClick(page, switchElem); err != nil {
+		if err := humanClick(pp, switchElem); err != nil {
 			return errors.Wrap(err, "点击原创声明开关失败")
 		}
 
 		time.Sleep(500 * time.Millisecond)
 
 		// 处理原创声明确认弹窗
-		if err := confirmOriginalDeclaration(page); err != nil {
+		if err := confirmOriginalDeclaration(pp); err != nil {
 			return errors.Wrap(err, "确认原创声明失败")
 		}
 
@@ -909,54 +913,128 @@ func setOriginal(page *rod.Page) error {
 func confirmOriginalDeclaration(page *rod.Page) error {
 	humanPause(650*time.Millisecond, 1000*time.Millisecond)
 
-	footers, err := page.Elements("div.footer")
+	dialog, err := findOriginalDeclarationDialog(page)
 	if err != nil {
 		return errors.Wrap(err, "查找原创声明弹窗失败")
 	}
-	for _, footer := range footers {
-		text, err := footer.Text()
-		if err != nil || !strings.Contains(text, "声明原创") {
-			continue
-		}
 
-		checkboxInput, err := footer.Element(`div.d-checkbox input[type="checkbox"]`)
+	checked, err := originalDeclarationChecked(dialog)
+	if err != nil {
+		return err
+	}
+	if !checked {
+		checkbox, err := findOriginalCheckboxClickTarget(dialog)
 		if err != nil {
-			return errors.Wrap(err, "查找原创声明勾选框失败")
+			return err
 		}
-		checked, err := checkboxInput.Property("checked")
-		if err != nil {
-			return errors.Wrap(err, "读取原创声明勾选状态失败")
+		if err := humanClick(page, checkbox); err != nil {
+			return errors.Wrap(err, "勾选原创声明须知失败")
 		}
-		if !checked.Bool() {
-			checkbox, err := footer.Element("div.d-checkbox")
-			if err != nil {
-				return errors.Wrap(err, "查找原创声明勾选区域失败")
-			}
-			if err := humanClick(page, checkbox); err != nil {
-				return errors.Wrap(err, "勾选原创声明须知失败")
-			}
+		if err := waitOriginalDeclarationChecked(dialog, 2*time.Second); err != nil {
+			return err
 		}
-
-		humanPause(400*time.Millisecond, 750*time.Millisecond)
-		buttons, err := footer.Elements("button.custom-button")
-		if err != nil {
-			return errors.Wrap(err, "查找声明原创按钮失败")
-		}
-		for _, button := range buttons {
-			buttonText, err := button.Text()
-			if err != nil || !strings.Contains(buttonText, "声明原创") {
-				continue
-			}
-			if err := humanClick(page, button); err != nil {
-				return errors.Wrap(err, "点击声明原创按钮失败")
-			}
-			slog.Info("已成功点击声明原创按钮")
-			return nil
-		}
-		return errors.New("未找到声明原创按钮")
+		slog.Info("已勾选原创声明须知")
 	}
 
-	return errors.New("未找到原创声明确认弹窗")
+	humanPause(400*time.Millisecond, 750*time.Millisecond)
+	button, err := findVisibleOriginalButton(dialog)
+	if err != nil {
+		return err
+	}
+	if err := humanClick(page, button); err != nil {
+		return errors.Wrap(err, "点击声明原创按钮失败")
+	}
+	slog.Info("已成功点击声明原创按钮")
+	return nil
+}
+
+// findOriginalDeclarationDialog 从确认按钮向上查找同时包含复选框的弹窗。
+func findOriginalDeclarationDialog(page *rod.Page) (*rod.Element, error) {
+	deadline := time.Now().Add(originalDialogButtonWait)
+	for time.Now().Before(deadline) {
+		buttons, err := page.Elements("button")
+		if err == nil {
+			button, buttonErr := firstVisibleOriginalButton(buttons)
+			if buttonErr == nil {
+				root := button
+				for range 10 {
+					root, err = root.Parent()
+					if err != nil {
+						break
+					}
+					if checkbox, checkboxErr := root.Element(`input[type="checkbox"]`); checkboxErr == nil && checkbox != nil {
+						return root, nil
+					}
+				}
+			}
+		}
+		time.Sleep(originalDialogPollInterval)
+	}
+	return nil, errors.New("未找到同时包含原创确认按钮和复选框的弹窗")
+}
+
+func findVisibleOriginalButton(root *rod.Element) (*rod.Element, error) {
+	buttons, err := root.Elements("button")
+	if err != nil {
+		return nil, errors.Wrap(err, "查找声明原创按钮失败")
+	}
+	return firstVisibleOriginalButton(buttons)
+}
+
+func firstVisibleOriginalButton(buttons rod.Elements) (*rod.Element, error) {
+	for _, button := range buttons {
+		visible, err := button.Visible()
+		if err != nil || !visible {
+			continue
+		}
+		text, err := button.Text()
+		if err == nil && strings.Contains(strings.TrimSpace(text), "声明原创") {
+			return button, nil
+		}
+	}
+	return nil, errors.New("未找到可见的声明原创按钮")
+}
+
+func originalDeclarationChecked(dialog *rod.Element) (bool, error) {
+	input, err := dialog.Element(`input[type="checkbox"]`)
+	if err != nil {
+		return false, errors.Wrap(err, "查找原创声明勾选框失败")
+	}
+	checked, err := input.Property("checked")
+	if err != nil {
+		return false, errors.Wrap(err, "读取原创声明勾选状态失败")
+	}
+	return checked.Bool(), nil
+}
+
+func findOriginalCheckboxClickTarget(dialog *rod.Element) (*rod.Element, error) {
+	input, err := dialog.Element(`input[type="checkbox"]`)
+	if err != nil {
+		return nil, errors.Wrap(err, "查找原创声明勾选框失败")
+	}
+	parents, err := input.Parents(`div.d-checkbox, label.d-checkbox, [role="checkbox"], label`)
+	if err != nil {
+		return nil, errors.Wrap(err, "查找原创声明勾选区域失败")
+	}
+	for _, parent := range parents {
+		visible, visibleErr := parent.Visible()
+		if visibleErr == nil && visible {
+			return parent, nil
+		}
+	}
+	return nil, errors.New("未找到可见的原创声明勾选区域")
+}
+
+func waitOriginalDeclarationChecked(dialog *rod.Element, maxWait time.Duration) error {
+	deadline := time.Now().Add(maxWait)
+	for time.Now().Before(deadline) {
+		checked, err := originalDeclarationChecked(dialog)
+		if err == nil && checked {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return errors.New("原创声明勾选未生效")
 }
 
 // bindProducts 绑定商品到发布内容
