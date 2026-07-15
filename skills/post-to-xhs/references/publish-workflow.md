@@ -280,9 +280,9 @@ python chrome_launcher.py --restart
 python chrome_launcher.py --restart --headless
 ```
 
-### Claude Code 集成
+### Codex 集成
 
-在 Claude Code 中通过 Bash 工具调用。推荐使用 pipeline 方式:
+在 Codex 中通过终端工具调用。推荐使用 pipeline 方式:
 
 1. 将中文标题和正文写入临时文本文件（UTF-8 编码）
 2. 调用 `publish_pipeline.py --headless` 传入文件路径和图片 URL

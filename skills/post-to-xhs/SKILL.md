@@ -129,12 +129,12 @@ AskUserQuestion 示例：
 
 **无头模式**（添加 `--headless` 参数）：
 ```bash
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\publish_pipeline.py" --headless --title-file title.txt --content-file content.txt --image-urls "URL1" "URL2"
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\publish_pipeline.py" --headless --title-file title.txt --content-file content.txt --image-urls "URL1" "URL2"
 ```
 
 **有窗口模式**（不添加 `--headless`）：
 ```bash
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\publish_pipeline.py" --title-file title.txt --content-file content.txt --image-urls "URL1" "URL2"
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\publish_pipeline.py" --title-file title.txt --content-file content.txt --image-urls "URL1" "URL2"
 ```
 
 **其他参数**：
@@ -156,7 +156,7 @@ python ... --images "C:\path\to\image.jpg"
 **Step B.1 — 填写长文内容 + 一键排版：**
 
 ```bash
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" long-article --title-file title.txt --content-file content.txt
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\cdp_publish.py" long-article --title-file title.txt --content-file content.txt
 ```
 
 可选 `--images img1.jpg img2.jpg` 插入图片到编辑器中。
@@ -170,13 +170,13 @@ python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" lon
 **Step B.3 — 选择模板：**
 
 ```bash
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" select-template --name "用户选择的模板名"
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\cdp_publish.py" select-template --name "用户选择的模板名"
 ```
 
 **Step B.4 — 点击下一步并填写发布页正文描述：**
 
 ```bash
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" click-next-step --content-file content.txt
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\cdp_publish.py" click-next-step --content-file content.txt
 ```
 
 注意：发布页有独立的正文描述编辑器，必须通过 `--content` 或 `--content-file` 传入内容填写。
@@ -195,7 +195,7 @@ python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" cli
 点击发布按钮：
 
 ```bash
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" click-publish
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\cdp_publish.py" click-publish
 ```
 
 ### 4.7 报告结果
@@ -218,34 +218,34 @@ python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" cli
 ### 列出账号
 
 ```bash
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" list-accounts
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\cdp_publish.py" list-accounts
 ```
 
 ### 添加账号
 
 ```bash
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" add-account myaccount --alias "我的账号"
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\cdp_publish.py" add-account myaccount --alias "我的账号"
 ```
 
 ### 登录
 
 ```bash
 # 默认账号
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" login
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\cdp_publish.py" login
 
 # 指定账号
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" --account myaccount login
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\cdp_publish.py" --account myaccount login
 ```
 
 ### 切换账号
 
 ```bash
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" switch-account
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" --account otheraccount switch-account
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\cdp_publish.py" switch-account
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\cdp_publish.py" --account otheraccount switch-account
 ```
 
 ### 设置默认账号
 
 ```bash
-python "C:\Users\admin\AI\.claude\skills\post-to-xhs\scripts\cdp_publish.py" set-default-account myaccount
+python "C:\Users\admin\AI\.codex\skills\post-to-xhs\scripts\cdp_publish.py" set-default-account myaccount
 ```
