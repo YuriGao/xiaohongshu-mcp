@@ -87,7 +87,10 @@ func uploadVideo(page *rod.Page, videoPath string) error {
 		}
 	}
 
-	fileInput.MustSetFiles(videoPath)
+	if err := fileInput.SetFiles([]string{videoPath}); err != nil {
+		return errors.Wrap(err, "提交视频文件失败")
+	}
+	humanPause(700*time.Millisecond, 1300*time.Millisecond)
 
 	// 对于视频，等待发布按钮变为可点击即表示处理完成
 	btn, err := waitForPublishButtonClickable(pp, 10*time.Minute)
@@ -105,17 +108,17 @@ func submitPublishVideo(page *rod.Page, title, content string, tags []string, sc
 	if err != nil {
 		return errors.Wrap(err, "查找标题输入框失败")
 	}
-	if err := titleElem.Input(title); err != nil {
+	if err := humanFocusAndType(page, titleElem, title); err != nil {
 		return errors.Wrap(err, "输入标题失败")
 	}
-	time.Sleep(1 * time.Second)
+	humanPause(700*time.Millisecond, 1300*time.Millisecond)
 
 	// 正文 + 标签
 	contentElem, ok := getContentElement(page)
 	if !ok {
 		return errors.New("没有找到内容输入框")
 	}
-	if err := contentElem.Input(content); err != nil {
+	if err := humanFocusAndType(page, contentElem, content); err != nil {
 		return errors.Wrap(err, "输入正文失败")
 	}
 	if err := waitAndClickTitleInput(titleElem); err != nil {
