@@ -1,209 +1,125 @@
-# N8N 接入 xiaohongshu-mcp 完整指南
+# n8n 接入
 
-## 📋 概述
+本目录包含可导入的 n8n 工作流模板 [`自动发布笔记到小红书.json`](./自动发布笔记到小红书.json)。模板把 Chat Trigger、AI Agent、语言模型和 MCP Client Tool 连接起来。
 
-本文档详细介绍了如何部署汉化版 n8n 工作流平台，并集成 xiaohongshu-mcp 服务，实现自动化小红书内容发布功能。
+> 模板内的模型、提示词和 MCP 私网地址只是示例。导入后必须逐项检查，不能直接用于生产发布。
 
-## 🚀 环境准备
+## 1. 前提
 
-### 前置要求
-- Docker 和 Docker Compose 已安装
-- xiaohongshu-mcp 服务已正常启动
-- 有效的 DeepSeek API 密钥
+- 可用的 n8n 实例
+- n8n 中可用的 AI Agent、Chat Model 和 MCP Client Tool 节点
+- 已配置的模型凭证
+- 正常运行并已登录的 xiaohongshu-mcp
 
-## 📦 n8n 部署指南
-
-### 1. 下载汉化包
-
-前往 [n8n 汉化包项目](https://github.com/other-blowsnow/n8n-i18n-chinese/releases) 下载最新版本的汉化文件。
-
-**操作步骤：**
-1. 下载最新的汉化包压缩文件
-2. 解压下载的文件
-3. 确保解压后包含 `editor-ui/dist` 文件夹
-
-### 2. Docker Compose 部署（推荐）
-
-创建 `docker-compose.yml` 文件，内容如下：
-
-```yaml
-version: '3'
-
-services:
-  n8n:
-    image: n8nio/n8n
-    container_name: n8n
-    restart: unless-stopped
-    ports:
-      - "5678:5678"
-    volumes:
-      # 运行数据挂载 - 确保工作流数据持久化
-      - ./n8n_data:/home/node/.n8n
-      # 汉化包挂载 - 替换为你的汉化包路径
-      - ./editor-ui/dist:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist
-    environment:
-      - N8N_HOST=localhost
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-      # 可选：设置基本认证（增强安全性）
-      # - N8N_BASIC_AUTH_ACTIVE=true
-      # - N8N_BASIC_AUTH_USER=myuser
-      # - N8N_BASIC_AUTH_PASSWORD=mypassword
-      # 时区设置（亚洲/上海）
-      - GENERIC_TIMEZONE=Asia/Shanghai
-      # 调试时禁用安全Cookie（方便本地访问）
-      - N8N_SECURE_COOKIE=false
-      # 设置默认语言为简体中文
-      - N8N_DEFAULT_LOCALE=zh-CN
-    networks:
-      - n8n-network
-
-networks:
-  n8n-network:
-    driver: bridge
-```
-
-**启动服务：**
-```bash
-docker-compose up -d
-```
-
-### 3. Docker 直接部署（备选方案）
-
-创建启动脚本或直接运行命令：
+启动 MCP 服务：
 
 ```bash
-docker run -it --name n8nChinese \
-  -p 5678:5678 \
-  -v "/path/to/editor-ui-dist:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist" \
-  -v "${HOME}/.n8n:/home/node/.n8n" \
-  -e N8N_DEFAULT_LOCALE=zh-CN \
-  -e N8N_SECURE_COOKIE=false \
-  n8nio/n8n
+go build -o build/xiaohongshu-mcp .
+go build -o build/login ./cmd/login
+./login.sh
+./run.sh
 ```
 
-### 4. 访问和初始化
+```bash
+curl http://127.0.0.1:18060/health
+```
 
-1. 打开浏览器访问：http://localhost:5678
-2. 首次访问需要输入邮箱地址进行注册
-3. n8n 会向该邮箱发送激活码
-4. 按提示输入激活码完成初始化
+n8n 的安装和运行方式请参考 [n8n 官方文档](https://docs.n8n.io/hosting/)。
 
-![初始化界面](./images/image-20250915225901709.png)
-![激活界面](./images/image-20250915225950626.png)
+## 2. 导入模板
 
-
-## ⚠️ 重要注意事项
-
-- **数据持久化**：务必挂载本地目录保存工作流数据，避免容器重启后数据丢失
-- **端口冲突**：如端口 5678 被占用，可修改 `-p` 参数映射其他端口
-- **汉化配置**：`N8N_DEFAULT_LOCALE=zh-CN` 环境变量强制设置为简体中文界面
-- **安全警告**：生产环境建议启用基本认证和安全Cookie设置
-
-## 🔌 接入 xiaohongshu-mcp 服务
-
-### 前提条件
-确保 xiaohongshu-mcp 服务已正常启动并运行
-
-### 配置步骤
-
-#### 步骤 1：创建工作流
-
-在 n8n 控制台中创建新的工作流：
-
-![创建工作流](./images/image-20250915225530994.png)
-
-#### 步骤 2：导入工作流配置
-
-导入本目录中的配置文件：
-- 文件名称：`自动发布笔记到小红书.json`
-- 操作：点击"导入工作流"选择该文件
+1. 在 n8n 新建工作流。
+2. 选择从文件导入。
+3. 选择本目录的 `自动发布笔记到小红书.json`。
+4. 打开每个节点并检查配置。
 
 ![导入工作流](./images/image-20250915230216557.png)
 
-#### 步骤 3：配置大模型节点
+导入后应看到以下连接：
 
-1. 选择 AI 大模型节点（支持 DeepSeek、OpenAI 等）
-2. 配置大模型连接凭证
-3. 以 DeepSeek 为例，需要申请 API 密钥
-
-**DeepSeek API 密钥申请：**
-- 访问：[DeepSeek 平台](https://platform.deepseek.com/api_keys)
-- 注册账号并获取 API 密钥
-
-![选择大模型](./images/image-20250915230403977.png)
-![配置凭证](./images/image-20250915230528047.png)
-![完成配置](./images/image-20250915230614246.png)
-
-#### 步骤 4：配置 MCP 服务
-
-1. **双击 MCP 节点进行配置**
-
-![配置MCP节点](./images/image-20250915231537715.png)
-
-2. **修改连接设置**
-   - 将 IP 地址修改为你实际的 xiaohongshu-mcp 服务 IP
-   - 默认导入所有可用的工具函数
-   
-
-   ![修改IP配置](./images/image-20250915231736534.png)
-
-
-3. **测试连接**
-   - 点击"执行步骤"测试连接
-   - 选择一个接口进行功能测试
-   - 返回成功表示接入正常
-   
-
-   ![测试连接](./images/image-20250915232135744.png)
-   ![测试成功](./images/image-20250915232246623.png)
-
-
-## 🎯 开始使用
-
-### 执行工作流
-
-1. 点击"开始执行该步骤"
-2. 在聊天框中输入提示词
-3. 系统会自动处理并发布内容
-
-
-![开始执行](./images/image-20250915232457764.png)
-
-### 示例提示词
-
-```
-给我发布一篇关于重庆旅游的小红书爆款笔记，配图找"重庆打卡"点赞最高的一张
+```text
+Chat Trigger
+    │
+    ▼
+AI Agent ◀── Chat Model
+    ▲
+    └──── MCP Client Tool
 ```
 
-### 效果展示
+## 3. 必须修改的内容
 
-![测试过程](./images/测试图.png)
-![测试结果](./images/测试效果图.jpg)
+### MCP Client Tool
 
+模板中的 `xhs_MCP` 节点保存了示例私网 IP。将 Endpoint URL 改为 n8n 实际可以访问的地址，并选择 Streamable HTTP：
 
-## 🛠️ 故障排除
+| n8n 运行位置 | MCP 地址 |
+| --- | --- |
+| 与 MCP 服务同机、非容器 | `http://127.0.0.1:18060/mcp` |
+| Docker Desktop 容器 | `http://host.docker.internal:18060/mcp` |
+| 另一台设备或服务器 | `http://<MCP 服务局域网 IP>:18060/mcp` |
 
-### 常见问题
+Linux Docker 中使用 `host.docker.internal` 时，需要增加 `host-gateway`，或将两个服务放入可互通的 Docker 网络。
 
-1. **连接失败**：检查 xiaohongshu-mcp 服务是否正常运行
-2. **API 密钥错误**：确认 DeepSeek API 密钥有效且未过期
-3. **汉化不生效**：检查汉化包路径是否正确挂载
-4. **端口冲突**：修改 docker-compose.yml 中的端口映射
+![配置 MCP 节点](./images/image-20250915231537715.png)
 
-### 获取帮助
+### 语言模型
 
-- 查看 n8n 官方文档：https://docs.n8n.io
-- 参考 xiaohongshu-mcp 项目文档
-- 检查日志文件排查具体错误
+模板使用一个 DeepSeek 兼容的 Chat Model 节点。你可以换成任何被当前 n8n AI Agent 支持、且具备工具调用能力的模型。删除模板中遗留的凭证引用，再选择自己的凭证。
 
-## 📁 项目文件说明
+### Agent 提示词
 
-- `docker-compose.yml` - Docker Compose 部署配置文件
-- `自动发布笔记到小红书.json` - n8n 工作流配置文件
-- `images/` - 说明文档相关截图
-- `editor-ui/dist/` - 汉化包文件（需自行下载）
+模板提示词是演示内容，包含与小红书发布无关的引导逻辑。请完整替换为自己的发布规则，例如：
 
-## 🎉 完成部署
+```text
+你负责整理小红书图文笔记。
+调用任何发布或互动工具前，必须先展示最终标题、正文、标签、图片路径、可见范围和原创声明选项。
+只有在用户明确确认后，才允许调用 xiaohongshu-mcp。
+工具失败时停止流程并返回原始错误，不要自动重复发布。
+```
 
-通过以上步骤，您已成功部署汉化版 n8n 并集成 xiaohongshu-mcp 服务，可以开始自动化小红书内容发布工作了！
+## 4. 测试顺序
+
+先单独执行 MCP Client Tool，测试：
+
+```text
+check_login_status
+```
+
+确认工具清单和登录状态正常后，再从 Chat Trigger 输入只读请求：
+
+```text
+搜索关键词“周末徒步”，只返回前 5 条结果，不执行任何互动操作。
+```
+
+最后使用仅自己可见的测试内容验证发布，并在小红书端检查实际结果。
+
+![执行工作流](./images/image-20250915232457764.png)
+
+## 5. 工作流建议
+
+- 在发布节点前增加人工确认。
+- 为每篇内容生成业务唯一 ID，避免 n8n 重试造成重复发布。
+- 记录工具参数、返回值和执行时间，但不要记录 Cookies。
+- 为模型节点和 MCP 节点分别设置超时与错误分支。
+- 批量流程应限制并发和频率。
+- 图片路径必须能被 xiaohongshu-mcp 进程读取，而不只是能被 n8n 读取。
+
+## 6. 排查
+
+### MCP 连接失败
+
+从 n8n 所在环境访问 `http://<地址>:18060/health`。如果 n8n 在容器内，容器里的 `127.0.0.1` 不是宿主机。
+
+### 工具列表为空
+
+确认 MCP Client Tool 的传输类型为 Streamable HTTP，Endpoint 以 `/mcp` 结尾，并重新执行节点。
+
+### Agent 不调用工具
+
+确认 MCP Client Tool 已通过 `ai_tool` 连接到 Agent，模型支持工具调用，且提示词明确要求使用工具。
+
+### 发布重复
+
+关闭自动重试，检查 n8n 执行历史，并在工作流中加入内容去重和幂等控制。
+
+返回示例索引：[examples/README.md](../README.md)。

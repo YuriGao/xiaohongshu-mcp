@@ -1,62 +1,100 @@
-## 后台运行小红书 MCP 的解决方案 - Mac 端
+# macOS 后台运行
 
-通过此方法你可以：通过系统进程管理小红书 MCP
+本目录提供一个 LaunchAgent 模板，用于在当前 macOS 用户会话中启动 xiaohongshu-mcp。
 
-### 快速开始
+## 前提
 
-#### 1. 安装配置
-
-1. 打开当前目录下 xhsmcp.plist
-   1. 必须：替换 {二进制路径} 为你的小红书 MCP 二进制路径
-   2. 必须：替换 {工作路径} 为你的小红书 MCP 工作路径，必须在有 cookies.json 文件的目录才能正常工作
-   3. 可选：修改默认日志路径 StandardOutPath
-   4. 可选：修改默认错误日志路径 StandardErrorPath
-   5. 可选：修改错误退出的行为是否重启 KeepAlive
-   6. 可选：修改是否开机自动重启 RunAtLoad
-2. 安装配置
-   1. ln -s {你编辑后的 plist} ~/Library/LaunchAgents/xhsmcp.plist
-   2. launchctl load ~/Library/LaunchAgents/xhsmcp.plist
-
-至此就完成了配置安装
-
-#### 2. 使用配置
-
-启动小红书 MCP 服务
+先准备可执行文件，并完成一次登录：
 
 ```bash
-launchctl start xhsmcp
+cd /path/to/xiaohongshu-mcp
+go build -o build/xiaohongshu-mcp .
+go build -o build/login ./cmd/login
+./login.sh
 ```
 
-关闭小红书 MCP 服务
+确认 `cookies.json` 已生成，且主程序可以正常启动。
+
+## 配置 LaunchAgent
+
+复制模板：
 
 ```bash
-launchctl stop xhsmcp
+mkdir -p ~/Library/LaunchAgents
+cp deploy/macos/xhsmcp.plist ~/Library/LaunchAgents/xhsmcp.plist
 ```
 
-查看服务状态，输出有进程 ID 则为运行中，也可以通过 curl 检查服务运行状态
+编辑 `~/Library/LaunchAgents/xhsmcp.plist`：
+
+- 将 `{二进制路径}` 替换为 `build/xiaohongshu-mcp` 的绝对路径。
+- 将 `{工作路径}` 替换为仓库或 Cookies 所在目录的绝对路径。
+- 如需登录后自动启动，将 `RunAtLoad` 改为 `true`。
+- 如需进程退出后自动重启，将 `KeepAlive` 改为 `true`。
+- 默认日志写入 `/tmp/xhsmcp.log` 和 `/tmp/xhsmcp.err`。
+
+检查 plist：
 
 ```bash
-launchctl list | grep xhsmcp
+plutil -lint ~/Library/LaunchAgents/xhsmcp.plist
 ```
 
-### Shell 脚本管理 （进阶用法）
+## 安装与启动
 
-如果你使用 fish shell，可以安装该目录下的 xhsmcp.fish，实现类似这样的效果：
+首次安装：
 
-``` bash
-~/home
-> launchctl list | grep 
-
--	0	xhsmcp
-
-~/home
-> xhsmcp_status
-
-✗ xhsmcp 未运行
-是否启动服务? (yes/其他): yes
-✓ 服务启动成功 (PID: 76061)
-
-~/home
-> launchctl list | grep 
-76061	0	xhsmcp
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/xhsmcp.plist
 ```
+
+手动启动或重启：
+
+```bash
+launchctl kickstart -k gui/$(id -u)/xhsmcp
+```
+
+查看状态：
+
+```bash
+launchctl print gui/$(id -u)/xhsmcp
+curl http://127.0.0.1:18060/health
+```
+
+停止：
+
+```bash
+launchctl kill SIGTERM gui/$(id -u)/xhsmcp
+```
+
+查看日志：
+
+```bash
+tail -f /tmp/xhsmcp.log /tmp/xhsmcp.err
+```
+
+## 更新配置
+
+修改 plist 后，先卸载再重新安装：
+
+```bash
+launchctl bootout gui/$(id -u)/xhsmcp
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/xhsmcp.plist
+```
+
+仅替换二进制时，替换完成后执行：
+
+```bash
+launchctl kickstart -k gui/$(id -u)/xhsmcp
+```
+
+## 卸载
+
+```bash
+launchctl bootout gui/$(id -u)/xhsmcp
+rm ~/Library/LaunchAgents/xhsmcp.plist
+```
+
+## Fish 辅助函数
+
+`xhsmcp.fish` 是可选的函数模板。使用前请先检查其中的命令和服务名，再复制到 Fish 配置目录。LaunchAgent 的标准管理方式仍是上面的 `launchctl` 命令。
+
+返回项目总览：[README.md](../../README.md)。
