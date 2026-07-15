@@ -12,7 +12,6 @@ import (
 
 	"github.com/avast/retry-go/v4"
 	"github.com/go-rod/rod"
-	"github.com/go-rod/rod/lib/proto"
 	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/errors"
 )
@@ -37,7 +36,6 @@ type delayConfig struct {
 var (
 	humanDelayRange   = delayConfig{300, 700}
 	reactionTimeRange = delayConfig{300, 800}
-	hoverTimeRange    = delayConfig{100, 300}
 	readTimeRange     = delayConfig{500, 1200}
 	shortReadRange    = delayConfig{600, 1200}
 	scrollWaitRange   = delayConfig{100, 200}
@@ -417,25 +415,8 @@ func clickElementWithHumanBehavior(page *rod.Page, el *rod.Element, text string)
 	// 使用retry-go进行点击操作重试
 	err := retry.Do(
 		func() error {
-			// 滚动到元素
-			el.MustEval(`() => {
-				try {
-					this.scrollIntoView({behavior: 'smooth', block: 'center'});
-				} catch (e) {}
-			}`)
-
 			sleepRandom(reactionTimeRange.min, reactionTimeRange.max)
-
-			// 鼠标悬停
-			if box, err := el.Shape(); err == nil && len(box.Quads) > 0 {
-				x := float64(box.Quads[0][0]+box.Quads[0][4]) / 2
-				y := float64(box.Quads[0][1]+box.Quads[0][5]) / 2
-				page.Mouse.MustMoveTo(x, y)
-				sleepRandom(hoverTimeRange.min, hoverTimeRange.max)
-			}
-
-			// 点击
-			if err := el.Click(proto.InputMouseButtonLeft, 1); err != nil {
+			if err := humanClick(page, el); err != nil {
 				return err // 返回错误以触发重试
 			}
 
@@ -468,7 +449,12 @@ func clickElementWithHumanBehavior(page *rod.Page, el *rod.Element, text string)
 
 func humanScroll(page *rod.Page, speed string, largeMode bool, pushCount int) (bool, int, int) {
 	beforeTop := getScrollTop(page)
-	viewportHeight := page.MustEval(`() => window.innerHeight`).Int()
+	_, viewportHeightFloat, err := viewportSize(page)
+	if err != nil {
+		logrus.Warnf("获取可视区域高度失败: %v", err)
+		viewportHeightFloat = 800
+	}
+	viewportHeight := int(viewportHeightFloat)
 
 	baseRatio := getScrollRatio(speed)
 	if largeMode {
@@ -481,7 +467,10 @@ func humanScroll(page *rod.Page, speed string, largeMode bool, pushCount int) (b
 
 	for i := 0; i < max(1, pushCount); i++ {
 		scrollDelta := calculateScrollDelta(viewportHeight, baseRatio)
-		page.MustEval(`(delta) => { window.scrollBy(0, delta); }`, scrollDelta)
+		if err := humanScrollBy(page, scrollDelta); err != nil {
+			logrus.Warnf("真人化滚轮滚动失败: %v", err)
+			break
+		}
 
 		sleepRandom(scrollWaitRange.min, scrollWaitRange.max)
 
@@ -501,7 +490,9 @@ func humanScroll(page *rod.Page, speed string, largeMode bool, pushCount int) (b
 	}
 
 	if !scrolled && pushCount > 0 {
-		page.MustEval(`() => window.scrollTo(0, document.body.scrollHeight)`)
+		if err := humanScrollBy(page, float64(viewportHeight)*1.35); err != nil {
+			logrus.Warnf("真人化大幅滚动失败: %v", err)
+		}
 		sleepRandom(postScrollRange.min, postScrollRange.max)
 		currentScrollTop = getScrollTop(page)
 		actualDelta = currentScrollTop - beforeTop + actualDelta
@@ -540,7 +531,10 @@ func scrollToCommentsArea(page *rod.Page) {
 
 	// 先定位到评论区
 	if el, err := page.Timeout(2 * time.Second).Element(".comments-container"); err == nil {
-		el.MustScrollIntoView()
+		el = el.CancelTimeout()
+		if err := humanScrollIntoView(page, el); err != nil {
+			logrus.Warnf("真人化滚动到评论区失败: %v", err)
+		}
 	}
 	// 等待滚动完成
 	time.Sleep(500 * time.Millisecond)
@@ -551,22 +545,9 @@ func scrollToCommentsArea(page *rod.Page) {
 
 // smartScroll 智能滚动：触发滚轮事件以正确触发懒加载
 func smartScroll(page *rod.Page, delta float64) {
-	page.MustEval(`(delta) => {
-		// 查找滚动目标元素
-		let targetElement = document.querySelector('.note-scroller') 
-			|| document.querySelector('.interaction-container') 
-			|| document.documentElement;
-		
-		// 触发滚轮事件（关键！这样才能触发懒加载）
-		const wheelEvent = new WheelEvent('wheel', {
-			deltaY: delta,
-			deltaMode: 0, // 像素模式
-			bubbles: true,
-			cancelable: true,
-			view: window
-		});
-		targetElement.dispatchEvent(wheelEvent);
-	}`, delta)
+	if err := humanScrollBy(page, delta); err != nil {
+		logrus.Warnf("真人化滚轮滚动失败: %v", err)
+	}
 }
 
 func scrollToLastComment(page *rod.Page) {
@@ -576,8 +557,10 @@ func scrollToLastComment(page *rod.Page) {
 		return
 	}
 	// 滚动到最后一个评论
-	lastComment := elements[len(elements)-1]
-	lastComment.MustScrollIntoView()
+	lastComment := elements[len(elements)-1].CancelTimeout()
+	if err := humanScrollIntoView(page, lastComment); err != nil {
+		logrus.Warnf("真人化滚动到最后一条评论失败: %v", err)
+	}
 }
 
 // ========== DOM 查询 ==========

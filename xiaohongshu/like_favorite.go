@@ -43,21 +43,34 @@ func newInteractAction(page *rod.Page) *interactAction {
 	return &interactAction{page: page}
 }
 
-func (a *interactAction) preparePage(ctx context.Context, actionType interactActionType, feedID, xsecToken string) *rod.Page {
+func (a *interactAction) preparePage(ctx context.Context, actionType interactActionType, feedID, xsecToken string) (*rod.Page, error) {
 	page := a.page.Context(ctx).Timeout(60 * time.Second)
 	url := makeFeedDetailURL(feedID, xsecToken)
 	logrus.Infof("Opening feed detail page for %s: %s", actionType, url)
 
-	page.MustNavigate(url)
-	page.MustWaitDOMStable()
-	time.Sleep(1 * time.Second)
+	if err := page.Navigate(url); err != nil {
+		return nil, errors.Wrapf(err, "打开 feed 详情页执行%s失败", actionType)
+	}
+	if err := page.WaitLoad(); err != nil {
+		return nil, errors.Wrapf(err, "等待 feed 详情页执行%s失败", actionType)
+	}
+	humanPause(650*time.Millisecond, 1200*time.Millisecond)
+	if err := checkPageAccessible(page); err != nil {
+		return nil, err
+	}
 
-	return page
+	return page, nil
 }
 
-func (a *interactAction) performClick(page *rod.Page, selector string) {
-	element := page.MustElement(selector)
-	element.MustClick()
+func (a *interactAction) performClick(page *rod.Page, selector string) error {
+	element, err := page.Element(selector)
+	if err != nil {
+		return errors.Wrapf(err, "未找到交互按钮 %s", selector)
+	}
+	if err := humanClick(page, element); err != nil {
+		return errors.Wrap(err, "真人化点击交互按钮失败")
+	}
+	return nil
 }
 
 // LikeAction 负责处理点赞相关交互
@@ -85,7 +98,10 @@ func (a *LikeAction) perform(ctx context.Context, feedID, xsecToken string, targ
 		actionType = actionUnlike
 	}
 
-	page := a.preparePage(ctx, actionType, feedID, xsecToken)
+	page, err := a.preparePage(ctx, actionType, feedID, xsecToken)
+	if err != nil {
+		return err
+	}
 
 	liked, _, err := a.getInteractState(page, feedID)
 	if err != nil {
@@ -106,13 +122,14 @@ func (a *LikeAction) perform(ctx context.Context, feedID, xsecToken string, targ
 }
 
 func (a *LikeAction) toggleLike(page *rod.Page, feedID string, targetLiked bool, actionType interactActionType) error {
-	a.performClick(page, SelectorLikeButton)
-	time.Sleep(3 * time.Second)
+	if err := a.performClick(page, SelectorLikeButton); err != nil {
+		return errors.Wrapf(err, "%s失败", actionType)
+	}
+	humanPause(1800*time.Millisecond, 3200*time.Millisecond)
 
 	liked, _, err := a.getInteractState(page, feedID)
 	if err != nil {
-		logrus.Warnf("验证%s状态失败: %v", actionType, err)
-		return nil
+		return errors.Wrapf(err, "验证%s状态失败", actionType)
 	}
 	if liked == targetLiked {
 		logrus.Infof("feed %s %s成功", feedID, actionType)
@@ -120,20 +137,21 @@ func (a *LikeAction) toggleLike(page *rod.Page, feedID string, targetLiked bool,
 	}
 
 	logrus.Warnf("feed %s %s可能未成功，状态未变化，尝试再次点击", feedID, actionType)
-	a.performClick(page, SelectorLikeButton)
-	time.Sleep(2 * time.Second)
+	if err := a.performClick(page, SelectorLikeButton); err != nil {
+		return errors.Wrapf(err, "第二次%s失败", actionType)
+	}
+	humanPause(1200*time.Millisecond, 2400*time.Millisecond)
 
 	liked, _, err = a.getInteractState(page, feedID)
 	if err != nil {
-		logrus.Warnf("第二次验证%s状态失败: %v", actionType, err)
-		return nil
+		return errors.Wrapf(err, "第二次验证%s状态失败", actionType)
 	}
 	if liked == targetLiked {
 		logrus.Infof("feed %s 第二次点击%s成功", feedID, actionType)
 		return nil
 	}
 
-	return nil
+	return fmt.Errorf("feed %s %s失败：两次真人化点击后状态仍未变化", feedID, actionType)
 }
 
 // FavoriteAction 负责处理收藏相关交互
@@ -161,7 +179,10 @@ func (a *FavoriteAction) perform(ctx context.Context, feedID, xsecToken string, 
 		actionType = actionUnfavorite
 	}
 
-	page := a.preparePage(ctx, actionType, feedID, xsecToken)
+	page, err := a.preparePage(ctx, actionType, feedID, xsecToken)
+	if err != nil {
+		return err
+	}
 
 	_, collected, err := a.getInteractState(page, feedID)
 	if err != nil {
@@ -182,13 +203,14 @@ func (a *FavoriteAction) perform(ctx context.Context, feedID, xsecToken string, 
 }
 
 func (a *FavoriteAction) toggleFavorite(page *rod.Page, feedID string, targetCollected bool, actionType interactActionType) error {
-	a.performClick(page, SelectorCollectButton)
-	time.Sleep(3 * time.Second)
+	if err := a.performClick(page, SelectorCollectButton); err != nil {
+		return errors.Wrapf(err, "%s失败", actionType)
+	}
+	humanPause(1800*time.Millisecond, 3200*time.Millisecond)
 
 	_, collected, err := a.getInteractState(page, feedID)
 	if err != nil {
-		logrus.Warnf("验证%s状态失败: %v", actionType, err)
-		return nil
+		return errors.Wrapf(err, "验证%s状态失败", actionType)
 	}
 	if collected == targetCollected {
 		logrus.Infof("feed %s %s成功", feedID, actionType)
@@ -196,33 +218,38 @@ func (a *FavoriteAction) toggleFavorite(page *rod.Page, feedID string, targetCol
 	}
 
 	logrus.Warnf("feed %s %s可能未成功，状态未变化，尝试再次点击", feedID, actionType)
-	a.performClick(page, SelectorCollectButton)
-	time.Sleep(2 * time.Second)
+	if err := a.performClick(page, SelectorCollectButton); err != nil {
+		return errors.Wrapf(err, "第二次%s失败", actionType)
+	}
+	humanPause(1200*time.Millisecond, 2400*time.Millisecond)
 
 	_, collected, err = a.getInteractState(page, feedID)
 	if err != nil {
-		logrus.Warnf("第二次验证%s状态失败: %v", actionType, err)
-		return nil
+		return errors.Wrapf(err, "第二次验证%s状态失败", actionType)
 	}
 	if collected == targetCollected {
 		logrus.Infof("feed %s 第二次点击%s成功", feedID, actionType)
 		return nil
 	}
 
-	return nil
+	return fmt.Errorf("feed %s %s失败：两次真人化点击后状态仍未变化", feedID, actionType)
 }
 
 // getInteractState 从 __INITIAL_STATE__ 读取笔记的点赞/收藏状态
 func (a *interactAction) getInteractState(page *rod.Page, feedID string) (liked bool, collected bool, err error) {
 
-	result := page.MustEval(`() => {
+	evalResult, err := page.Eval(`() => {
 		if (window.__INITIAL_STATE__ &&
 		    window.__INITIAL_STATE__.note &&
 		    window.__INITIAL_STATE__.note.noteDetailMap) {
 			return JSON.stringify(window.__INITIAL_STATE__.note.noteDetailMap);
 		}
 		return "";
-	}`).String()
+	}`)
+	if err != nil {
+		return false, false, errors.Wrap(err, "读取笔记交互状态失败")
+	}
+	result := evalResult.Value.String()
 	if result == "" {
 		return false, false, myerrors.ErrNoFeedDetail
 	}

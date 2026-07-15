@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/errors"
 )
 
@@ -159,6 +160,15 @@ type SearchAction struct {
 	page *rod.Page
 }
 
+const (
+	explorePageURL           = "https://www.xiaohongshu.com/explore"
+	searchInputSelector      = `input.search-input, div.search-box input[type="text"], input[placeholder*="搜索"]`
+	searchSubmitSelector     = `div.input-box div.input-button, button.min-width-search-icon`
+	filterButtonSelector     = `div.filter`
+	filterPanelSelector      = `div.filter-panel`
+	searchElementWaitTimeout = 15 * time.Second
+)
+
 func NewSearchAction(page *rod.Page) *SearchAction {
 	pp := page.Timeout(60 * time.Second)
 
@@ -166,67 +176,49 @@ func NewSearchAction(page *rod.Page) *SearchAction {
 }
 
 func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...FilterOption) ([]Feed, error) {
-	page := s.page.Context(ctx)
-
-	searchURL := makeSearchURL(keyword)
-	page.MustNavigate(searchURL)
-	page.MustWaitStable()
-
-	page.MustWait(`() => window.__INITIAL_STATE__ !== undefined`)
-
-	// 如果有筛选条件，则应用筛选
-	if len(filters) > 0 {
-		// 将所有 FilterOption 转换为内部筛选选项
-		var allInternalFilters []internalFilterOption
-		for _, filter := range filters {
-			internalFilters, err := convertToInternalFilters(filter)
-			if err != nil {
-				return nil, fmt.Errorf("筛选选项转换失败: %w", err)
-			}
-			allInternalFilters = append(allInternalFilters, internalFilters...)
-		}
-
-		// 验证所有内部筛选选项
-		for _, filter := range allInternalFilters {
-			if err := validateInternalFilterOption(filter); err != nil {
-				return nil, fmt.Errorf("筛选选项验证失败: %w", err)
-			}
-		}
-
-		// 悬停在筛选按钮上
-		filterButton := page.MustElement(`div.filter`)
-		filterButton.MustHover()
-
-		// 等待筛选面板出现
-		page.MustWait(`() => document.querySelector('div.filter-panel') !== null`)
-
-		// 应用所有筛选条件
-		for _, filter := range allInternalFilters {
-			selector := fmt.Sprintf(`div.filter-panel div.filters:nth-child(%d) div.tags:nth-child(%d)`,
-				filter.FiltersIndex, filter.TagsIndex)
-			option := page.MustElement(selector)
-			option.MustClick()
-		}
-
-		// 等待页面更新
-		page.MustWaitStable()
-		// 重新等待 __INITIAL_STATE__ 更新
-		page.MustWait(`() => window.__INITIAL_STATE__ !== undefined`)
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		return nil, fmt.Errorf("搜索关键词不能为空")
 	}
 
-	result := page.MustEval(`() => {
-		if (window.__INITIAL_STATE__ &&
-		    window.__INITIAL_STATE__.search &&
-		    window.__INITIAL_STATE__.search.feeds) {
-			const feeds = window.__INITIAL_STATE__.search.feeds;
-			const feedsData = feeds.value !== undefined ? feeds.value : feeds._value;
-			if (feedsData) {
-				return JSON.stringify(feedsData);
-			}
-		}
-		return "";
-	}`).String()
+	allInternalFilters, err := prepareInternalFilters(filters)
+	if err != nil {
+		return nil, err
+	}
 
+	page := s.page.Context(ctx)
+
+	if err := page.Navigate(explorePageURL); err != nil {
+		return nil, fmt.Errorf("进入发现页失败: %w", err)
+	}
+	if err := page.WaitLoad(); err != nil {
+		return nil, fmt.Errorf("等待发现页加载失败: %w", err)
+	}
+
+	logrus.Info("内容检索: 发现页已加载，开始真人化输入")
+	if err := performHumanSearch(ctx, page, keyword); err != nil {
+		return nil, fmt.Errorf("执行真人化搜索失败: %w", err)
+	}
+	if err := waitForSearchResultPage(ctx, page); err != nil {
+		return nil, err
+	}
+	humanPause(450*time.Millisecond, 850*time.Millisecond)
+	if err := waitForSearchState(page); err != nil {
+		return nil, err
+	}
+	logrus.Info("内容检索: 搜索结果已加载")
+
+	if len(allInternalFilters) > 0 {
+		if err := applyHumanFilters(ctx, page, allInternalFilters); err != nil {
+			return nil, err
+		}
+		logrus.Infof("内容检索: 已应用 %d 个筛选条件", len(allInternalFilters))
+	}
+
+	result, err := readSearchFeeds(page)
+	if err != nil {
+		return nil, err
+	}
 	if result == "" {
 		return nil, errors.ErrNoFeeds
 	}
@@ -239,13 +231,258 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 	return feeds, nil
 }
 
-func makeSearchURL(keyword string) string {
+func prepareInternalFilters(filters []FilterOption) ([]internalFilterOption, error) {
+	var allInternalFilters []internalFilterOption
+	for _, filter := range filters {
+		internalFilters, err := convertToInternalFilters(filter)
+		if err != nil {
+			return nil, fmt.Errorf("筛选选项转换失败: %w", err)
+		}
+		allInternalFilters = append(allInternalFilters, internalFilters...)
+	}
 
-	values := url.Values{}
-	values.Set("keyword", keyword)
-	values.Set("source", "web_explore_feed")
+	for _, filter := range allInternalFilters {
+		if err := validateInternalFilterOption(filter); err != nil {
+			return nil, fmt.Errorf("筛选选项验证失败: %w", err)
+		}
+	}
+	return allInternalFilters, nil
+}
 
-	//https://www.xiaohongshu.com/search_result?keyword=%25E7%258E%258B%25E5%25AD%2590&source=web_search_result_notes
-	//https://www.xiaohongshu.com/search_result?keyword=%25E7%258E%258B%25E5%25AD%2590&source=web_explore_feed
-	return fmt.Sprintf("https://www.xiaohongshu.com/search_result?%s", values.Encode())
+func performHumanSearch(ctx context.Context, page *rod.Page, keyword string) error {
+	searchInput, err := waitForVisibleElement(ctx, page, searchInputSelector, "搜索输入框")
+	if err != nil {
+		return err
+	}
+	placeholder, err := searchInput.Attribute("placeholder")
+	if err != nil {
+		return fmt.Errorf("读取搜索输入框状态失败: %w", err)
+	}
+	if placeholder != nil && strings.Contains(*placeholder, "登录") {
+		return fmt.Errorf("当前未登录，请先调用 get_login_qrcode 完成登录")
+	}
+
+	if err := humanReplaceText(page, searchInput, keyword); err != nil {
+		return fmt.Errorf("输入搜索关键词失败: %w", err)
+	}
+	humanPause(250*time.Millisecond, 520*time.Millisecond)
+
+	searchButton, err := waitForVisibleElement(ctx, page, searchSubmitSelector, "搜索按钮")
+	if err != nil {
+		return err
+	}
+	if err := humanClick(page, searchButton); err != nil {
+		return fmt.Errorf("点击搜索按钮失败: %w", err)
+	}
+	return nil
+}
+
+func waitForSearchResultPage(ctx context.Context, page *rod.Page) error {
+	timer := time.NewTimer(searchElementWaitTimeout)
+	defer timer.Stop()
+
+	ticker := time.NewTicker(120 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		info, err := page.Info()
+		if err == nil && strings.Contains(info.URL, "/search_result") {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("等待搜索结果页失败: %w", ctx.Err())
+		case <-timer.C:
+			return fmt.Errorf("等待搜索结果页超时")
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForSearchState(page *rod.Page) error {
+	err := page.Timeout(20 * time.Second).Wait(rod.Eval(`() => {
+		const feeds = window.__INITIAL_STATE__?.search?.feeds;
+		return !!feeds && (feeds.value !== undefined || feeds._value !== undefined);
+	}`))
+	if err != nil {
+		return fmt.Errorf("等待搜索结果数据失败: %w", err)
+	}
+	return nil
+}
+
+func applyHumanFilters(ctx context.Context, page *rod.Page, filters []internalFilterOption) error {
+	for _, filter := range filters {
+		_, found, err := firstVisibleElement(page, filterPanelSelector)
+		if err != nil {
+			return fmt.Errorf("检查筛选面板失败: %w", err)
+		}
+		if !found {
+			filterButton, err := waitForVisibleElement(ctx, page, filterButtonSelector, "筛选按钮")
+			if err != nil {
+				return err
+			}
+			if err := humanClick(page, filterButton); err != nil {
+				return fmt.Errorf("打开筛选面板失败: %w", err)
+			}
+			humanPause(220*time.Millisecond, 480*time.Millisecond)
+
+			if _, err := waitForVisibleElement(ctx, page, filterPanelSelector, "筛选面板"); err != nil {
+				return err
+			}
+		}
+
+		option, err := waitForVisibleFilterOption(ctx, page, filter)
+		if err != nil {
+			return err
+		}
+		if err := humanClick(page, option); err != nil {
+			return fmt.Errorf("点击筛选项[%s]失败: %w", filter.Text, err)
+		}
+		humanPause(550*time.Millisecond, 950*time.Millisecond)
+	}
+
+	humanPause(700*time.Millisecond, 1200*time.Millisecond)
+	if err := waitForSearchState(page); err != nil {
+		return err
+	}
+	return nil
+}
+
+func waitForVisibleFilterOption(
+	ctx context.Context,
+	page *rod.Page,
+	filter internalFilterOption,
+) (*rod.Element, error) {
+	timer := time.NewTimer(searchElementWaitTimeout)
+	defer timer.Stop()
+
+	ticker := time.NewTicker(120 * time.Millisecond)
+	defer ticker.Stop()
+
+	var lastErr error
+	for {
+		panel, found, err := firstVisibleElement(page, filterPanelSelector)
+		if err != nil {
+			lastErr = err
+		} else if found {
+			option, optionErr := findVisibleFilterOption(panel, filter)
+			if optionErr == nil {
+				return option, nil
+			}
+			lastErr = optionErr
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("等待筛选项[%s]失败: %w", filter.Text, ctx.Err())
+		case <-timer.C:
+			if lastErr != nil {
+				return nil, fmt.Errorf("等待筛选项[%s]超时: %w", filter.Text, lastErr)
+			}
+			return nil, fmt.Errorf("等待筛选项[%s]超时", filter.Text)
+		case <-ticker.C:
+		}
+	}
+}
+
+func findVisibleFilterOption(panel *rod.Element, filter internalFilterOption) (*rod.Element, error) {
+	groups, err := panel.Elements(`div.filters`)
+	if err != nil {
+		return nil, fmt.Errorf("读取筛选组失败: %w", err)
+	}
+	if filter.FiltersIndex > len(groups) {
+		return nil, fmt.Errorf("筛选组[%d]不存在", filter.FiltersIndex)
+	}
+
+	options, err := groups[filter.FiltersIndex-1].Elements(`div.tags`)
+	if err != nil {
+		return nil, fmt.Errorf("读取筛选项失败: %w", err)
+	}
+	for _, option := range options {
+		hidden, err := option.Attribute("aria-hidden")
+		if err != nil {
+			continue
+		}
+		if hidden != nil && *hidden == "true" {
+			continue
+		}
+
+		visible, err := option.Visible()
+		if err != nil || !visible {
+			continue
+		}
+		text, err := option.Text()
+		if err == nil && strings.TrimSpace(text) == filter.Text {
+			return option, nil
+		}
+	}
+	return nil, fmt.Errorf("未找到可见筛选项[%s]", filter.Text)
+}
+
+func waitForVisibleElement(
+	ctx context.Context,
+	page *rod.Page,
+	selector string,
+	description string,
+) (*rod.Element, error) {
+	timer := time.NewTimer(searchElementWaitTimeout)
+	defer timer.Stop()
+
+	ticker := time.NewTicker(120 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		element, found, err := firstVisibleElement(page, selector)
+		if err != nil {
+			return nil, fmt.Errorf("查找%s失败: %w", description, err)
+		}
+		if found {
+			return element, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("等待%s失败: %w", description, ctx.Err())
+		case <-timer.C:
+			return nil, fmt.Errorf("等待%s超时", description)
+		case <-ticker.C:
+		}
+	}
+}
+
+func firstVisibleElement(page *rod.Page, selector string) (*rod.Element, bool, error) {
+	elements, err := page.Elements(selector)
+	if err != nil {
+		return nil, false, err
+	}
+	for _, element := range elements {
+		visible, err := element.Visible()
+		if err != nil {
+			continue
+		}
+		if visible {
+			return element, true, nil
+		}
+	}
+	return nil, false, nil
+}
+
+func readSearchFeeds(page *rod.Page) (string, error) {
+	result, err := page.Eval(`() => {
+		if (window.__INITIAL_STATE__ &&
+		    window.__INITIAL_STATE__.search &&
+		    window.__INITIAL_STATE__.search.feeds) {
+			const feeds = window.__INITIAL_STATE__.search.feeds;
+			const feedsData = feeds.value !== undefined ? feeds.value : feeds._value;
+			if (feedsData) {
+				return JSON.stringify(feedsData);
+			}
+		}
+		return "";
+	}`)
+	if err != nil {
+		return "", fmt.Errorf("读取搜索结果失败: %w", err)
+	}
+	return result.Value.String(), nil
 }

@@ -8,13 +8,18 @@ A local MCP service that operates Xiaohongshu/RedNote through a real browser. It
 
 The project packages login, publishing, discovery, and engagement actions as MCP tools. An MCP client can invoke those tools through natural language while the server performs the operation in a browser instead of relying on an undocumented platform API.
 
-Publishing uses a human-style interaction layer:
+Publishing, search, and engagement share a human-style interaction layer:
 
 - Mouse movement follows a slightly curved path before clicking.
 - Actions target visible and enabled page elements.
+- Real mouse-wheel input scrolls the page incrementally and triggers lazy comment loading without script-injected jumps.
 - Titles, body text, and tags are typed incrementally with randomized pauses.
+- Search starts from the Explore page, types the query, clicks the search button, and selects filters through visible controls.
+- Comments and replies are typed incrementally; likes, favorites, reply expansion, and profile navigation click visible controls.
 - Image posts, visibility, scheduled publishing, and product binding are handled in the browser.
 - When `is_original=true`, the original-content switch, acknowledgment checkbox, and confirmation are completed automatically.
+
+Read-only results such as home feeds, note details, and user profiles are still extracted from browser-loaded page state. The service does not call undocumented platform APIs or add meaningless clicks merely to imitate activity.
 
 > Browser automation can break when the website changes. Follow platform rules and use the project only with accounts and content you are authorized to operate.
 

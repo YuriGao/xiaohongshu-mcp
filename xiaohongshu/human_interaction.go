@@ -30,7 +30,7 @@ func humanPause(minDelay, maxDelay time.Duration) {
 
 // humanClick 模拟鼠标移动、停顿、按下和松开。
 func humanClick(page *rod.Page, elem *rod.Element) error {
-	box, err := humanElementBox(elem)
+	box, err := humanElementBox(page, elem)
 	if err != nil {
 		return err
 	}
@@ -45,7 +45,7 @@ func humanClick(page *rod.Page, elem *rod.Element) error {
 }
 
 func humanClickAtRatio(page *rod.Page, elem *rod.Element, xRatio, yRatio float64) error {
-	box, err := humanElementBox(elem)
+	box, err := humanElementBox(page, elem)
 	if err != nil {
 		return err
 	}
@@ -58,9 +58,9 @@ func humanClickAtRatio(page *rod.Page, elem *rod.Element, xRatio, yRatio float64
 	})
 }
 
-func humanElementBox(elem *rod.Element) (*proto.DOMRect, error) {
-	if err := elem.ScrollIntoView(); err != nil {
-		return nil, errors.Wrap(err, "滚动元素到可视区域失败")
+func humanElementBox(page *rod.Page, elem *rod.Element) (*proto.DOMRect, error) {
+	if err := humanScrollIntoView(page, elem); err != nil {
+		return nil, err
 	}
 	if err := elem.WaitVisible(); err != nil {
 		return nil, errors.Wrap(err, "等待元素可见失败")
@@ -78,6 +78,96 @@ func humanElementBox(elem *rod.Element) (*proto.DOMRect, error) {
 		return nil, errors.New("元素没有可点击区域")
 	}
 	return box, nil
+}
+
+// humanScrollIntoView 使用真实滚轮逐步将元素移入可视区域。
+func humanScrollIntoView(page *rod.Page, elem *rod.Element) error {
+	viewportWidth, viewportHeight, err := viewportSize(page)
+	if err != nil {
+		return err
+	}
+
+	for attempt := 0; attempt < 10; attempt++ {
+		shape, shapeErr := elem.Shape()
+		if shapeErr != nil {
+			return errors.Wrap(shapeErr, "获取待滚动元素位置失败")
+		}
+		box := shape.Box()
+		if box == nil {
+			return errors.New("待滚动元素没有可见区域")
+		}
+
+		centerX := box.X + box.Width/2
+		centerY := box.Y + box.Height/2
+		if centerX >= 0 && centerX <= viewportWidth &&
+			centerY >= 48 && centerY <= viewportHeight-48 {
+			return nil
+		}
+
+		delta := centerY - viewportHeight*0.55
+		maxDelta := viewportHeight * 0.82
+		delta = math.Max(-maxDelta, math.Min(maxDelta, delta))
+		if math.Abs(delta) < 120 {
+			if delta < 0 {
+				delta = -120
+			} else {
+				delta = 120
+			}
+		}
+		if err := humanScrollBy(page, delta); err != nil {
+			return errors.Wrap(err, "滚动元素到可视区域失败")
+		}
+	}
+
+	return errors.New("多次滚轮滚动后元素仍不在可视区域")
+}
+
+// humanScrollBy 在页面中央附近移动鼠标并滚动真实滚轮。
+func humanScrollBy(page *rod.Page, deltaY float64) error {
+	if deltaY == 0 {
+		return nil
+	}
+
+	viewportWidth, viewportHeight, err := viewportSize(page)
+	if err != nil {
+		return err
+	}
+	target := proto.Point{
+		X: viewportWidth * (0.46 + rand.Float64()*0.12),
+		Y: viewportHeight * (0.42 + rand.Float64()*0.16),
+	}
+	if err := humanMoveMouse(page, target); err != nil {
+		return errors.Wrap(err, "移动鼠标到滚动区域失败")
+	}
+
+	humanPause(70*time.Millisecond, 180*time.Millisecond)
+	steps := 4 + rand.Intn(5)
+	if math.Abs(deltaY) > viewportHeight {
+		steps += 2
+	}
+	if err := page.Mouse.Scroll(0, deltaY, steps); err != nil {
+		return errors.Wrap(err, "滚动鼠标滚轮失败")
+	}
+	humanPause(140*time.Millisecond, 360*time.Millisecond)
+	return nil
+}
+
+func viewportSize(page *rod.Page) (float64, float64, error) {
+	widthResult, err := page.Eval(`() => window.innerWidth`)
+	if err != nil {
+		return 0, 0, errors.Wrap(err, "获取页面宽度失败")
+	}
+	heightResult, err := page.Eval(`() => window.innerHeight`)
+	if err != nil {
+		return 0, 0, errors.Wrap(err, "获取页面高度失败")
+	}
+
+	width := float64(widthResult.Value.Int())
+	height := float64(heightResult.Value.Int())
+	if width <= 0 || height <= 0 {
+		return 0, 0, errors.New("页面可视区域尺寸无效")
+	}
+	return width, height, nil
 }
 
 func humanClickPoint(page *rod.Page, target proto.Point) error {

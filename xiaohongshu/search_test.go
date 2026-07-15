@@ -103,3 +103,29 @@ func TestFilterValidation(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, internalFilters, 5)
 }
+
+func TestSearchRejectsBlankKeyword(t *testing.T) {
+	action := &SearchAction{}
+
+	feeds, err := action.Search(context.Background(), " \t ")
+
+	require.Nil(t, feeds)
+	require.ErrorContains(t, err, "搜索关键词不能为空")
+}
+
+func TestPrepareInternalFilters(t *testing.T) {
+	filters, err := prepareInternalFilters([]FilterOption{
+		{
+			SortBy:      "最新",
+			NoteType:    "图文",
+			PublishTime: "一周内",
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []internalFilterOption{
+		{FiltersIndex: 1, TagsIndex: 2, Text: "最新"},
+		{FiltersIndex: 2, TagsIndex: 3, Text: "图文"},
+		{FiltersIndex: 3, TagsIndex: 3, Text: "一周内"},
+	}, filters)
+}
